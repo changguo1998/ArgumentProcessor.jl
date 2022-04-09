@@ -1,0 +1,13 @@
+name = "ArgumentProcessor"
+uuid = "da5e4181-4678-44ac-9e93-56ca85e03b1f"
+authors = ["changguo1998"]
+version = "0.1.0"
+
+[compat]
+julia = "1.5"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
