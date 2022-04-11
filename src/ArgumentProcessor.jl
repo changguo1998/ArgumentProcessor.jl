@@ -4,12 +4,12 @@
     A module to help parse command line arguments and parameters.
 
 ## functions
+
         argument
         parameter
         layer
         addarg!
         addpar!
-
 """
 module ArgumentProcessor
 
@@ -70,7 +70,8 @@ function Argument(name::AbstractString; abbreviation::AbstractString="", default
     if isempty(name)
         error("Name of argument can't be ignored.")
     end
-    return Argument(String(name), String(abbreviation), default, Varformat("%k " * inputformat), mustexist, String(help),
+    return Argument(String(name), String(abbreviation), default, Varformat("%k " * inputformat), mustexist,
+                    String(help),
                     String(showname))
 end
 
@@ -306,18 +307,21 @@ addarg!(a::Argument) = push!(INNER_ARGUMENT, a)
 addpar!(p::Parameter) = push!(INNER_PARAMETER, p)
 addarg!(name::AbstractString; abbreviation::AbstractString="", default::Any="", inputformat::AbstractString="%s",
 mustexist::Bool=true, help::AbstractString="", showname::AbstractString="") = push!(INNER_ARGUMENT,
-                                                                            Argument(name;
-                                                                                     abbreviation=abbreviation,
-                                                                                     default=default,
-                                                                                     inputformat=inputformat, mustexist=mustexist,
-                                                                                     help=help, showname=showname))
-function addpar!(; position::Int=0 name::AbstractString="", inputformat::AbstractString="%s", default::Any="",
-    mustexist::Bool=true,help::AbstractString="", showname::AbstractString="")
+                                                                                    Argument(name;
+                                                                                             abbreviation=abbreviation,
+                                                                                             default=default,
+                                                                                             inputformat=inputformat,
+                                                                                             mustexist=mustexist,
+                                                                                             help=help,
+                                                                                             showname=showname))
+function addpar!(; position::Int=0, name::AbstractString="", inputformat::AbstractString="%s", default::Any="",
+                 mustexist::Bool=true, help::AbstractString="", showname::AbstractString="")
     if position == 0
         position = length(INNER_PARAMETER) + 1
     end
-    push!(INNER_PARAMETER, Parameter(position; name=name, inputformat=inputformat, default=default, mustexist=mustexist,
-    help=help, showname=showname))
+    push!(INNER_PARAMETER,
+          Parameter(position; name=name, inputformat=inputformat, default=default, mustexist=mustexist,
+                    help=help, showname=showname))
     return nothing
 end
 
