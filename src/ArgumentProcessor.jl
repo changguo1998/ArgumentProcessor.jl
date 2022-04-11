@@ -19,7 +19,7 @@ export Argument, Parameter, Layer, printhelp, addarg!, addpar!
 """
 Varformat
 
-    alias of `String`, must be one of:
+    must be one of:
     - `"%s"`        string
     - `"%f"`/`"%g"` decimal float
     - `"%h"`        hexadecimal float
@@ -29,13 +29,22 @@ Varformat
     - `"%d"`        integer
     - `"%l"`        logical(`true`, `false`, `0` or `1`)
 """
-Varformat = String
+struct Varformat
+    fmt::String
 
-function Varformat(x::AbstractString)
-    if !(x in ("%s", "%f", "%g", "%h", "%o", "%b", "%c", "%d", "%l"))
-        error("Invalid type character for " * x)
+    function Varformat(x::String)
+        if !(x in ("%s", "%f", "%g", "%h", "%o", "%b", "%c", "%d", "%l"))
+            error("Invalid type character for \"" * x * "\"")
+        end
+        return new(x)
     end
-    return Varformat(x)
+end
+
+function Varformat(x)
+    if !(typeof(x) <: AbstractString)
+        error("Format should be a string")
+    end
+    return Varformat(String(x))
 end
 
 """
@@ -104,7 +113,8 @@ Layer(name, args, pars)
 Layer(name::AbstractString, args::Vector{Argument}=Argument[], pars::Vector{Parameter}=Parameter[]) = Layer(String(name),
                                                                                                             args, pars)
 
-function parsefunc(fmt::Varformat)
+function parsefunc(F::Varformat)
+    fmt = F.fmt
     if fmt == "%s"
         return v -> String(v)
     elseif fmt in ("%f", "%g")
