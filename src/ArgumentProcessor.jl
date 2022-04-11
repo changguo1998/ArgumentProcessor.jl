@@ -1,44 +1,95 @@
+"""
+# ArgumentProcessor
+
+    A module to help parse command line arguments and parameters.
+
+## functions
+        argument
+        parameter
+        layer
+        addarg!
+        addpar!
+
+"""
 module ArgumentProcessor
 
 import Base.parse
-export argument, parameter, layer, printhelp
+export Argument, Parameter, Layer, printhelp, addarg!, addpar!
 
+"""
+Varformat
+
+    alias of `String`, must be one of:
+    - `"%s"`        string
+    - `"%f"`/`"%g"` decimal float
+    - `"%h"`        hexadecimal float
+    - `"%o"`        octal float
+    - `"%b"`        binary float
+    - `"%c"`        complex float
+    - `"%d"`        integer
+    - `"%l"`        logical(`true`, `false`, `0` or `1`)
+"""
+Varformat = String
+
+function Varformat(x::AbstractString)
+    if !(x in ("%s", "%f", "%g", "%h", "%o", "%b", "%c", "%d", "%l"))
+        error("Invalid type character for " * x)
+    end
+    return Varformat(x)
+end
+
+"""
+Argument
+
+    argument type, usually spicified as `--argname=argval`, `--argname argval` or  `-Abbreviation argval`
+    contains:
+
+    name            name of variable
+    abbreviation    short format of argument
+    default         default value
+    inputformat     C like format. see more information of `Varformat`
+"""
 struct Argument
     name::String
     abbreviation::String
     default::Any
-    inputformat::String
+    inputformat::Varformat
     errorwhennotexist::Bool
     help::String
     showname::String
 end
 
-function argument(name::AbstractString; abbreviation::AbstractString="", default::Any="",
+"""
+Argument(name; abbreviation="", default="",inputformat="%s",mustexist=true, help="", showname="")
+
+see more discription of `Argument`
+"""
+function Argument(name::AbstractString; abbreviation::AbstractString="", default::Any="",
                   inputformat::AbstractString="%s",
-                  e::Bool=true, help::AbstractString="", showname::AbstractString="")
+                  mustexist::Bool=true, help::AbstractString="", showname::AbstractString="")
     if isempty(name)
         error("Name of argument can't be ignored.")
     end
-    if !(inputformat in ("%s", "%f", "%g", "%h", "%o", "%b", "%c", "%d", "%l"))
-        error("Invalid type character for " * name)
-    end
-    return Argument(String(name), String(abbreviation), default, String("%k " * inputformat), e, String(help),
+    return Argument(String(name), String(abbreviation), default, Varformat("%k " * inputformat), mustexist, String(help),
                     String(showname))
 end
 
 struct Parameter
     position::Int
     name::String
-    inputformat::String
+    inputformat::Varformat
     default::Any
     errorwhennotexist::Bool
     help::String
     showname::String
 end
 
-parameter(position::Int; name::AbstractString="", inputformat::AbstractString="%s", default::Any="", e::Bool=true,
-help::AbstractString="", showname::AbstractString="") = Parameter(position, String(name), String(inputformat),
-                                                                  default, e, help, String(showname))
+"""
+Parameter(position; name="", inputformat="%s", default="", mustexist=true, help="", showname="")
+"""
+Parameter(position::Int; name::AbstractString="", inputformat::Varformat="%s", default::Any="", mustexist::Bool=true,
+help::AbstractString="", showname::AbstractString="") = Parameter(position, String(name), Varformat(inputformat),
+                                                                  default, mustexist, help, String(showname))
 
 struct Layer
     name::String
@@ -46,10 +97,13 @@ struct Layer
     pars::Vector{Parameter}
 end
 
-layer(name::AbstractString, args::Vector{Argument}=Argument[], pars::Vector{Parameter}=Parameter[]) = Layer(String(name),
+"""
+Layer(name, args, pars)
+"""
+Layer(name::AbstractString, args::Vector{Argument}=Argument[], pars::Vector{Parameter}=Parameter[]) = Layer(String(name),
                                                                                                             args, pars)
 
-function parsefunc(fmt::AbstractString)
+function parsefunc(fmt::Varformat)
     if fmt == "%s"
         return v -> String(v)
     elseif fmt in ("%f", "%g")
@@ -96,6 +150,9 @@ function parse(lines::Vector{T}, par::Parameter) where {T<:AbstractString}
     return (pf(lines[par.position]), par.position)
 end
 
+"""
+parse(lines::Vector{<:AbstractString}, layer::Layer)
+"""
 function parse(lines::Vector{T}, layer::Layer) where {T<:AbstractString}
     arglist = String[]
     parlist = String[]
@@ -149,6 +206,9 @@ function parse(lines::Vector{T}, layer::Layer) where {T<:AbstractString}
     return ((args=(; zip(argkey, argval)...), pars=(; zip(parkey, parval)...)), findall(flag))
 end
 
+"""
+parse(lines::Vector{<:AbstractString}, layer::Vector{Layer})
+"""
 function parse(lines::Vector{S}, layer::Vector{Layer}) where {S<:AbstractString}
     tags = Symbol[]
     vals = NamedTuple[]
@@ -170,11 +230,9 @@ function parse(lines::Vector{S}, layer::Vector{Layer}) where {S<:AbstractString}
 end
 
 parse(l::AbstractString, layer::Layer) = parse(split(l, ' '; keepempty=false), layer)
+parse(l::AbstractString, layer::Vector{Layer}) = parse(split(l, ' '; keepempty=false), layer)
 
 function helpstr(layers::Vector{Layer})
-    namelen = vcat(map(layers) do l
-                       [map(a -> length(a.name) + length(a.abbreviation), l.args); map(p -> length(p.name), l.pars)]
-                   end...)
     arg_varname = String[]
     arg_abbra_line = String[]
     arg_detail_var = String[]
@@ -232,9 +290,9 @@ function helpstr(layers::Vector{Layer})
             [arg_detail_doc; par_detail_doc])
 end
 
-function printhelp(layers::Vector{Layer}, indent::Int=4)
+function printhelp(layers::Vector{Layer}, programname::AbstractString="", indent::Int=4)
     (abbr, var, doc) = helpstr(layers)
-    println(abbr, "\n")
+    println(programname, " ", abbr, "\n")
     varl = maximum(length.(var)) + 2
     for i = 1:length(var)
         println(" "^(indent + varl - length(var[i])), var[i], " ", doc[i], "\n")
@@ -247,17 +305,22 @@ global INNER_PARAMETER = Parameter[]
 addarg!(a::Argument) = push!(INNER_ARGUMENT, a)
 addpar!(p::Parameter) = push!(INNER_PARAMETER, p)
 addarg!(name::AbstractString; abbreviation::AbstractString="", default::Any="", inputformat::AbstractString="%s",
-e::Bool=true, help::AbstractString="", showname::AbstractString="") = push!(INNER_ARGUMENT,
-                                                                            argument(name;
+mustexist::Bool=true, help::AbstractString="", showname::AbstractString="") = push!(INNER_ARGUMENT,
+                                                                            Argument(name;
                                                                                      abbreviation=abbreviation,
                                                                                      default=default,
-                                                                                     inputformat=inputformat, e=e,
+                                                                                     inputformat=inputformat, mustexist=mustexist,
                                                                                      help=help, showname=showname))
-addpar!(position::Int; name::AbstractString="", inputformat::AbstractString="%s", default::Any="", e::Bool=true,
-help::AbstractString="", showname::AbstractString="") = push!(INNER_PARAMETER,
-                                                              parameter(position; name=name,
-                                                                        inputformat=inputformat, default=default, e=e,
-                                                                        help=help, showname=showname))
+function addpar!(; position::Int=0 name::AbstractString="", inputformat::AbstractString="%s", default::Any="",
+    mustexist::Bool=true,help::AbstractString="", showname::AbstractString="")
+    if position == 0
+        position = length(INNER_PARAMETER) + 1
+    end
+    push!(INNER_PARAMETER, Parameter(position; name=name, inputformat=inputformat, default=default, mustexist=mustexist,
+    help=help, showname=showname))
+    return nothing
+end
+
 function clearinnerbuffer!()
     global INNER_ARGUMENT, INNER_PARAMETER
     INNER_ARGUMENT = Argument[]
