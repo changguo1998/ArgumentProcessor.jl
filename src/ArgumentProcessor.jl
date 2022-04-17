@@ -761,7 +761,7 @@ addpar!(position::Int; innername::AbstractString = "", default::AbstractString =
     required::Bool = false, help::AbstractString = "")
 ```
 """
-function addpar!(position::Int;
+function addpar!(position::Int = 0;
     innername::AbstractString = "",
     default::AbstractString = "",
     fmt::AbstractString = "%s",
