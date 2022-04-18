@@ -135,18 +135,16 @@ it will print text like
 
 ```shell
 $ julia program.jl --help
-Usage: test.jl [--datatime|-D] [--flag1] [--float|-F] [--help|-h] [--string|-S] [par1]
+Usage: test.jl [--datatime(int)/(int)/(int)T(int):(int):(float)|-D(int)/(int)/(int)T(int):(int):(float)] [--flag1] --float (float)|-F (float) [--string "(string)"|-S "(string)"] [par1(float)]
 
 Example:
-    test.jl --datatime1/1/1T1:1:1.0 --flag1 --float 1.0 --help --string ""1"" 0.1
+    test.jl --datatime1/1/1T1:1:1.0 --flag1 --float 1.0 --string ""1"" 0.1
 
 Argument:
 
-    -D,--datatime Input a datetime format
-      --flag1
-    -F,--float    Input a float
-    -h,--help
-    -S,--string
-      par1       First float parameter
-
+    -D, --datatime Input a datetime format
+        --flag1
+    -F, --float    Input a float
+    -S, --string
+        par1       First float parameter
 ```
