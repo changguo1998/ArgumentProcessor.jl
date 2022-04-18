@@ -2,20 +2,12 @@
     ArgumentProcessor
 
 A module to help parse command line arguments and parameters.
-
-## functions
-
-        argument
-        parameter
-        layer
-        addarg!
-        addpar!
 """
 module ArgumentProcessor
 
 import Base.parse
-export Varformat, Delimiter, Flag, Option, Parameter, Layer,
-    @flag_str, @opt_str, helpstr, printhelp, addflag!, addopt!, addpar!, clearinnerbuffer!, @addflag, @addopt
+export Varformat, Delimiter, Flag, Option, Parameter, Group,
+    @flag_str, @opt_str, helpstr, printhelp, addflag!, addopt!, addpar!, clearinnerbuffer!, @addflag, @addopt, @printhelp
 
 
 const FMTLIST = ("%s", "%f", "%g", "%h", "%o", "%b", "%c", "%d", "%l")
@@ -97,6 +89,30 @@ function example(F::Varformat)
     else
         error("invalid type character " * fmt)
     end
+end
+
+function vartype(F::Varformat)
+    fmt = F.string
+    if fmt == "%s"
+        s = "string"
+    elseif fmt in ("%f", "%g")
+        s = "float"
+    elseif fmt == "%c"
+        s = "real+image*im"
+    elseif fmt == "%h"
+        s = "hexInt"
+    elseif fmt == "%o"
+        s = "octInt"
+    elseif fmt == "%b"
+        s = "binInt"
+    elseif fmt == "%d"
+        s = "int"
+    elseif fmt == "%l"
+        s = "bool"
+    else
+        error("invalid type character " * fmt)
+    end
+    return "(" * s * ")"
 end
 
 const DELIMLIST = ('=', ' ', '/', ',', ';', ''', '"', '%', ':')
@@ -195,6 +211,9 @@ function _parse(str::String, fmt::Vector{FormatPart})
         end
         endat = max(endat, ie)
         push!(v, parsefunc(fmt[ivar[i]])(str[ib:ie]))
+    end
+    if typeof(fmt[end]) <: Delimiter
+        endat = ibegins[end]+length(fmt[end].string)-1
     end
     if length(v) == 1
         return (v[1], endat)
@@ -326,7 +345,7 @@ function Option(innername::AbstractString;
         try
             _parse(String(default), _parseinputfmt(fmt))
         catch e
-            error("Error while parsing default value of option variable $(innername).")
+            error("Error while parsing default value \"$(default)\" of option variable $(innername).")
         end
     end
     outername = isempty(outername) ? innername : outername
@@ -410,7 +429,7 @@ function Parameter(position::Int;
         try
             _parse(String(default), _parseinputfmt(fmt))
         catch e
-            error("Error while parsing default value of position variable $(innername).")
+            error("Error while parsing default value \"$(default)\" of position variable $(innername).")
         end
     end
     innername = isempty(innername) ? "par"*string(position) : innername
@@ -418,16 +437,16 @@ function Parameter(position::Int;
 end
 
 """
-    Layer
+    Group
 
 A group of `Option` and `Parameter`.
 
-- `name` name of the layer
+- `name` name of the Group
 - `flgs` collect of `Flag`
 - `opts` collect of `Option`
 - `pars` collect of `Parameter`
 """
-struct Layer
+struct Group
     name::String
     flgs::Vector{Flag}
     opts::Vector{Option}
@@ -436,27 +455,31 @@ end
 
 """
 ```julia
-Layer(name::AbstractString, flags::Vector{Flag}=Flag[], opts::Vector{Option}=Option[], pars::Vector{Parameter}=Parameter[])
+Group(name::AbstractString, flags::Vector{Flag}=Flag[], opts::Vector{Option}=Option[], pars::Vector{Parameter}=Parameter[])
 ```
 """
-Layer(
+Group(
     name::AbstractString,
     flags::Vector{Flag}=Flag[],
     opts::Vector{Option}=Option[],
-    pars::Vector{Parameter}=Parameter[]) = Layer(String(name), flags, opts, pars)
+    pars::Vector{Parameter}=Parameter[]) = Group(String(name), flags, opts, pars)
 
 """
     parse string to defined data structure
 
 ```julia
-parse(cmdstr::String, lyr::Layer)
+parse(cmdstr::String, grp::Group)
 ```
 """
-function parse(cmdstr::String, lyr::Layer)
+function parse(cmdstr::String, grp::Group)
+    if any(occursin.(("--help", "--usage", "-h"), cmdstr))
+        printhelp(grp)
+        exit(0)
+    end
     chars = collect(cmdstr)
     unused = trues(length(cmdstr))
     argpairs = Pair{Symbol, Any}[]
-    for flag in lyr.flgs
+    for flag in grp.flgs
         vloc1 = findall("--"*flag.outername, cmdstr)
         vloc2 = isempty(flag.abbreviation) ? UnitRange{Int64}[] : findall("-"*flag.abbreviation, cmdstr)
         vloc = [vloc1; vloc2]
@@ -469,7 +492,7 @@ function parse(cmdstr::String, lyr::Layer)
             end
         end
     end
-    for opt in lyr.opts
+    for opt in grp.opts
         vloc1 = findall("--"*opt.outername, cmdstr)
         vloc2 = isempty(opt.abbreviation) ? UnitRange{Int64}[] : findall("-"*opt.abbreviation, cmdstr)
         vloc = [vloc1; vloc2]
@@ -477,7 +500,7 @@ function parse(cmdstr::String, lyr::Layer)
             error("more than one values are assigned to $(opt.outername).")
         elseif isempty(vloc)
             if opt.required
-                error("variable $(opt.outername) must be specified.")
+                @error("variable $(opt.outername) must be specified.")
             else
                 if isempty(opt.default)
                     v = nothing
@@ -498,12 +521,13 @@ function parse(cmdstr::String, lyr::Layer)
         end
     end
     parstr = String(chars[unused]) |> strip |> split .|> String
-    parloc = [p.position for p in lyr.pars]
+    @debug "parse $(parstr) to parameters"
+    parloc = [p.position for p in grp.pars]
     parperm = sortperm(parloc)
     for ip = parperm
-        par = lyr.pars[ip]
+        par = grp.pars[ip]
         if par.position > length(parstr) && par.required
-            error("parameter on location $(par.position) must be specified.")
+            @error("parameter on location $(par.position) must be specified.")
         elseif par.position > length(parstr) && !par.required
             if isempty(par.default)
                 v = nothing
@@ -520,37 +544,37 @@ end
 
 """
 ```julia
-parse(cmdstr::AbstractString, lys::Vector{Layer})
+parse(cmdstr::AbstractString, grps::Vector{Group})
 ```
 """
-function parse(cmdstr::AbstractString, lys::Vector{Layer})
+function parse(cmdstr::AbstractString, grps::Vector{Group})
     ps = Pair{Symbol, NamedTuple}[]
-    for l in lys
-        v = parse(cmdstr, l)
-        push!(ps, Symbol(l.name)=>v)
+    for g in grps
+        v = parse(cmdstr, g)
+        push!(ps, Symbol(g.name)=>v)
     end
     return NamedTuple(ps)
 end
 
 """
 ```julia
-parse(line::Vector{<:AbstractString}, l::Layer)
+parse(line::Vector{<:AbstractString}, g::Group)
 ```
 """
-parse(line::Vector{<:AbstractString}, l::Layer) = parse(join(line, ' '), l)
+parse(line::Vector{<:AbstractString}, g::Group) = parse(join(line, ' '), g)
 
 """
 ```julia
-parse(line::Vector{<:AbstractString}, l::Vector{Layer})
+parse(line::Vector{<:AbstractString}, g::Vector{Group})
 ```
 """
-parse(line::Vector{<:AbstractString}, l::Vector{Layer}) = parse(join(line, ' '), l)
+parse(line::Vector{<:AbstractString}, g::Vector{Group}) = parse(join(line, ' '), g)
 
 """
-    generate help string from defined layers
+    generate help string from defined groups
 
 ```julia
-helpstr(layers::Vector{Layer})
+helpstr(groups::Vector{Group})
 ```
 
 return value:
@@ -560,15 +584,15 @@ return value:
     abbreviation_list::Vector{String}, helps::Vector{String})
 ```
 """
-function helpstr(layers::Vector{Layer})
+function helpstr(groups::Vector{Group})
     arg_varname = String[]
     arg_usage_line = String[]
     arg_detail_var = String[]
     arg_detail_abbr = String[]
     arg_detail_doc = String[]
     arg_example_line = String[]
-    for l in layers
-        for flag in l.flgs
+    for g in groups
+        for flag in g.flgs
             p1 = "--" * flag.outername
             p2 = isempty(flag.abbreviation) ? "" : "-"*flag.abbreviation
             push!(arg_varname, flag.outername)
@@ -578,15 +602,23 @@ function helpstr(layers::Vector{Layer})
             push!(arg_detail_doc, flag.help)
             push!(arg_example_line, p1)
         end
-        for opt in l.opts
+        for opt in g.opts
             p1 = "--" * opt.outername
             p2 = isempty(opt.abbreviation) ? "" : "-"*opt.abbreviation
+            emp = map(opt.parsefmt) do v
+                if typeof(v) <: Delimiter
+                    s = v.string
+                else
+                    s = vartype(v)
+                end
+                s
+            end |> join
             push!(arg_varname, opt.outername)
-            push!(arg_usage_line, (opt.required ? "" : "[")*p1*(isempty(p2) ? "" : "|")*p2*(opt.required ? "" : "]"))
+            push!(arg_usage_line, (opt.required ? "" : "[")*p1*emp*(isempty(p2) ? "" : "|")*p2*emp*(opt.required ? "" : "]"))
             push!(arg_detail_var, p1)
             push!(arg_detail_abbr, p2)
             push!(arg_detail_doc, opt.help)
-            push!(arg_example_line, p1* (isempty(opt.default) ? example(opt.parsefmt) : opt.default))
+            push!(arg_example_line, p1 * (isempty(opt.default) ? example(opt.parsefmt) : opt.default))
         end
     end
     argrange = sortperm(arg_varname)
@@ -599,8 +631,8 @@ function helpstr(layers::Vector{Layer})
 
     parid = Int[]
     pars = Parameter[]
-    for l in layers
-        for par in l.pars
+    for g in groups
+        for par in g.pars
             push!(parid, par.position)
             push!(pars, par)
         end
@@ -612,14 +644,22 @@ function helpstr(layers::Vector{Layer})
     par_detail_doc = String[]
     par_example_line = String[]
     for par in pars
-        push!(par_usage_line,  (par.required ? "" : "[")*par.innername*(par.required ? "" : "]"))
+        emp = map(par.parsefmt) do v
+            if typeof(v) <: Delimiter
+                s = v.string
+            else
+                s = vartype(v)
+            end
+            s
+        end |> join
+        push!(par_usage_line,  (par.required ? "" : "[")*par.innername*emp*(par.required ? "" : "]"))
         push!(par_detail_var, par.innername)
         push!(par_detail_doc, par.help)
         push!(par_example_line, isempty(par.default) ? example(par.parsefmt) : par.default)
     end
     return (
         join([arg_usage_line; par_usage_line], ' '),
-        join([arg_example_line; par_example_line]),
+        join([arg_example_line; par_example_line], ' '),
         vcat(arg_detail_var, par_detail_var),
         arg_detail_abbr,
         vcat(arg_detail_doc, par_detail_doc))
@@ -642,13 +682,17 @@ end
     print help doc of defined data structure
 
 ```julia
-printhelp(layers::Vector{Layer}, programname::AbstractString=""; indent::Int=4,
+printhelp(groups::Vector{Group}, programname::AbstractString=""; indent::Int=4,
     maxabbrcol::Int=5, maxvarcol::Int=10, maxdoccol::Int=60)
 ```
 """
-function printhelp(layers::Vector{Layer}, programname::AbstractString=""; indent::Int=4,
-    maxabbrcol::Int=5, maxvarcol::Int=10, maxdoccol::Int=60)
-    (usagestr, examplestr, varlist, argabbr, docs) = helpstr(layers)
+function printhelp(groups::Vector{Group}, programname::AbstractString=""; indent::Int=4,
+    maxabbrcol::Int=5, maxvarcol::Int=30, maxdoccol::Int=60)
+    if isempty(programname)
+        fn = splitdir(PROGRAM_FILE)
+        programname = fn[2]
+    end
+    (usagestr, examplestr, varlist, argabbr, docs) = helpstr(groups)
     println("Usage: ", programname, " ", usagestr)
     println("\nExample:\n", " "^indent, programname, " ", examplestr)
     varl = min(maximum(length.(varlist)), maxvarcol)
@@ -662,14 +706,15 @@ function printhelp(layers::Vector{Layer}, programname::AbstractString=""; indent
             if length(argabbr[i]) + 1 < abbrl
                 print(" "^(abbrl-1-length(argabbr[i])))
             end
+            print(" ")
         else
-            print(" "^abbrl)
+            print(" "^(abbrl+2))
         end
         print(varlist[i])
-        if length(varlist[i]) > varl
+        if length(varlist[i])-1 > varl
             print('\n', " "^(indent+varl+abbrl))
         else
-            print(" "^(varl-length(varlist[i])))
+            print(" "^(varl-length(varlist[i])+1))
         end
         if length(docs[i]) < maxdoccol
             println(docs[i])
@@ -685,6 +730,16 @@ function printhelp(layers::Vector{Layer}, programname::AbstractString=""; indent
     end
     return nothing
 end
+
+"""
+```julia
+printhelp(group::Group, programname::AbstractString=""; indent::Int=4,
+    maxabbrcol::Int=5, maxvarcol::Int=30, maxdoccol::Int=60)
+```
+"""
+printhelp(group::Group, programname::AbstractString=""; indent::Int=4,
+    maxabbrcol::Int=5, maxvarcol::Int=30, maxdoccol::Int=60) = printhelp([group],
+    programname; indent=indent, maxabbrcol=maxabbrcol, maxvarcol=maxvarcol, maxdoccol=maxdoccol)
 
 global INNER_FLAG = Flag[]
 global INNER_OPTION = Option[]
@@ -812,7 +867,7 @@ end
 
 parse commandline input according to inner buffer
 """
-parse(line::AbstractString) = parse(String(line), Layer("UNKNOWN", INNER_FLAG, INNER_OPTION, INNER_PARAMETER))
+parse(line::AbstractString) = parse(String(line), Group("UNKNOWN", INNER_FLAG, INNER_OPTION, INNER_PARAMETER))
 
 """
     `parse(lines::Vector{<:AbstractString})`
@@ -820,4 +875,17 @@ parse(line::AbstractString) = parse(String(line), Layer("UNKNOWN", INNER_FLAG, I
 parse commandline input according to inner buffer
 """
 parse(lines::Vector{<:AbstractString}) = parse(join(lines, ' '))
+
+function printhelp(programname::AbstractString=""; indent::Int=4,
+maxabbrcol::Int=5, maxvarcol::Int=30, maxdoccol::Int=60)
+    printhelp([Group("UNKNOWN", INNER_FLAG, INNER_OPTION, INNER_PARAMETER)],
+        programname, indent=indent, maxabbrcol=maxabbrcol, maxvarcol=maxvarcol, maxdoccol=maxdoccol)
+end
+
+macro printhelp(p)
+    return quote
+        fname = splitdir(PROGRAM_FILE)
+        printhelp(fname[2])
+    end
+end
 end
