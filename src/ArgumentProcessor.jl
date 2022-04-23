@@ -146,7 +146,9 @@ end
 FormatPart = Union{Varformat, Delimiter}
 
 function _parseinputfmt(str::AbstractString)
+    # split to Char vector
     chars = collect(String(str))
+    # find the location of input value
     valueloc = Int[]
     L = length(chars)
     i = 1
@@ -165,7 +167,9 @@ function _parseinputfmt(str::AbstractString)
     if isempty(valueloc)
         error("input format string must consist value type defination.")
     end
+    # find the head location of each segment
     ibegins = [1; valueloc; (valueloc .+ 2)] |> sort |> unique |> t->filter(<=(L), t)
+    # parse each segment
     fmt = FormatPart[]
     for i = 1:length(ibegins)
         ib = ibegins[i]
@@ -181,8 +185,16 @@ function _parseinputfmt(str::AbstractString)
     return fmt
 end
 
+"""
+    `_parse(str::String, fmt::Vector{FormatPart})`
+
+inner function.
+
+parse string to specified format
+"""
 function _parse(str::String, fmt::Vector{FormatPart})
     @debug "parsing \"$(str)\" using format: $(fmt)"
+    # find begin location of each segment in string
     Lfmt = length(fmt)
     ibegins = zeros(Int, Lfmt)
     ibegins[1] = 1
@@ -190,20 +202,22 @@ function _parse(str::String, fmt::Vector{FormatPart})
     for i = 1:length(fmt)
         if typeof(fmt[i]) <: Delimiter
             id = findnext(fmt[i].string, str, b)
-            ibegins[i] = id[1]
+            ibegins[i] = id[1] # begin of the delimiter segment
             if i < Lfmt
-                ibegins[i+1] = id[end] + 1
+                ibegins[i+1] = id[end] + 1 # begin of the var segment after the delimiter
             end
             b = id[end] + 1
         end
     end
     @debug "part of \"$(str)\" begins at $(ibegins)"
-    ivar = findall(v->typeof(v)<:Varformat, fmt)
+    ivar = findall(v->typeof(v)<:Varformat, fmt) # variable location
     v = Any[]
-    endat = 0
+    endat = 0 # record the used characters
     for i = 1:length(ivar)
         ib = ibegins[ivar[i]]
         if ivar[i] == Lfmt
+            # if the last segment is var, the segment will be end before a space;
+            # if there is no space in the rest part, it will end at the end of input string
             it = findnext(' ', str, ib)
             ie = isnothing(it) ? length(str) : it-1
         else
@@ -213,6 +227,7 @@ function _parse(str::String, fmt::Vector{FormatPart})
         push!(v, parsefunc(fmt[ivar[i]])(str[ib:ie]))
     end
     if typeof(fmt[end]) <: Delimiter
+        # correct the endat record if the last segment is delimiter
         endat = ibegins[end]+length(fmt[end].string)-1
     end
     if length(v) == 1
@@ -353,6 +368,11 @@ function Option(innername::AbstractString;
         _parseinputfmt(fmt), required, String(help))
 end
 
+"""
+    @opt_str -> Option
+
+Create `Option` type using input format string
+"""
 macro opt_str(s)
     if !(typeof(s) <: AbstractString)
         error("opt_str should be string")
@@ -882,6 +902,11 @@ maxabbrcol::Int=5, maxvarcol::Int=30, maxdoccol::Int=60)
         programname, indent=indent, maxabbrcol=maxabbrcol, maxvarcol=maxvarcol, maxdoccol=maxdoccol)
 end
 
+"""
+    @printhelp
+
+print help in inner buffer
+"""
 macro printhelp(p)
     return quote
         fname = splitdir(PROGRAM_FILE)
