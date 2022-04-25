@@ -90,7 +90,6 @@ using ArgumentProcessor
 group = Group(
     "group1",
     [
-        Flag("help", abbr="h"),
         Flag("flag1")
     ],
     [
@@ -104,11 +103,6 @@ group = Group(
 )
 
 input = ArgumentProcessor.parse(ARGS, group)
-
-if input.help
-    printhelp(group)
-    exit(0)
-end
 ```
 
 and run the script using

@@ -5,10 +5,10 @@ A module to help parse command line arguments and parameters.
 """
 module ArgumentProcessor
 
-import Base.parse
-export Varformat, Delimiter, Flag, Option, Parameter, Group,
-    @flag_str, @opt_str, helpstr, printhelp, addflag!, addopt!, addpar!, clearinnerbuffer!, @addflag, @addopt, @printhelp
-
+import Base: parse, Dict
+export Varformat, Delimiter, Flag, Option, Parameter, Group, Dict,
+       helpstr, printhelp, addflag!, addopt!, addpar!, clearinnerbuffer!, checksetting,
+       @addflag, @addopt, @printhelp, @flag_str, @opt_str
 
 const FMTLIST = ("%s", "%f", "%g", "%h", "%o", "%b", "%c", "%d", "%l")
 
@@ -16,14 +16,15 @@ const FMTLIST = ("%s", "%f", "%g", "%h", "%o", "%b", "%c", "%d", "%l")
     Varformat
 
 must be one of:
-- `"%s"`        string
-- `"%f"/"%g"`   decimal float
-- `"%c"`        complex float
-- `"%h"`        hexadecimal **integer**
-- `"%o"`        octal **integer**
-- `"%b"`        binary **integer**
-- `"%d"`        integer
-- `"%l"`        logical (true, false, 0 or 1)
+
+  - `"%s"`        string
+  - `"%f"/"%g"`   decimal float
+  - `"%c"`        complex float
+  - `"%h"`        hexadecimal **integer**
+  - `"%o"`        octal **integer**
+  - `"%b"`        binary **integer**
+  - `"%d"`        integer
+  - `"%l"`        logical (true, false, 0 or 1)
 """
 struct Varformat
     string::String
@@ -127,7 +128,7 @@ struct Delimiter
     string::String
 
     function Delimiter(d::String)
-        if !all(v->(v in DELIMLIST) || isletter(v), collect(d))
+        if !all(v -> (v in DELIMLIST) || isletter(v), collect(d))
             error("Invalid delimiter for \"" * d * "\"")
         end
         return new(d)
@@ -143,7 +144,7 @@ function Delimiter(x)
     end
 end
 
-FormatPart = Union{Varformat, Delimiter}
+FormatPart = Union{Varformat,Delimiter}
 
 function _parseinputfmt(str::AbstractString)
     # split to Char vector
@@ -168,17 +169,17 @@ function _parseinputfmt(str::AbstractString)
         error("input format string must consist value type defination.")
     end
     # find the head location of each segment
-    ibegins = [1; valueloc; (valueloc .+ 2)] |> sort |> unique |> t->filter(<=(L), t)
+    ibegins = [1; valueloc; (valueloc .+ 2)] |> sort |> unique |> t -> filter(<=(L), t)
     # parse each segment
     fmt = FormatPart[]
     for i = 1:length(ibegins)
         ib = ibegins[i]
-        ie = i == length(ibegins) ? L : ibegins[i+1]-1
+        ie = i == length(ibegins) ? L : ibegins[i+1] - 1
         ts = String(chars[ib:ie])
         if ib in valueloc
             push!(fmt, Varformat(ts))
         else
-            push!(fmt, Delimiter(replace(ts, "%%"=>"%")))
+            push!(fmt, Delimiter(replace(ts, "%%" => "%")))
         end
     end
     @debug "parse \"$(str)\" to $(fmt)"
@@ -210,7 +211,7 @@ function _parse(str::String, fmt::Vector{FormatPart})
         end
     end
     @debug "part of \"$(str)\" begins at $(ibegins)"
-    ivar = findall(v->typeof(v)<:Varformat, fmt) # variable location
+    ivar = findall(v -> typeof(v) <: Varformat, fmt) # variable location
     v = Any[]
     endat = 0 # record the used characters
     for i = 1:length(ivar)
@@ -219,7 +220,7 @@ function _parse(str::String, fmt::Vector{FormatPart})
             # if the last segment is var, the segment will be end before a space;
             # if there is no space in the rest part, it will end at the end of input string
             it = findnext(' ', str, ib)
-            ie = isnothing(it) ? length(str) : it-1
+            ie = isnothing(it) ? length(str) : it - 1
         else
             ie = ibegins[ivar[i]+1] - 1
         end
@@ -228,7 +229,7 @@ function _parse(str::String, fmt::Vector{FormatPart})
     end
     if typeof(fmt[end]) <: Delimiter
         # correct the endat record if the last segment is delimiter
-        endat = ibegins[end]+length(fmt[end].string)-1
+        endat = ibegins[end] + length(fmt[end].string) - 1
     end
     if length(v) == 1
         return (v[1], endat)
@@ -258,10 +259,10 @@ If the variable name exist in commandline input, the value will be set to `true`
 
 contains:
 
-- `innername`       varname which will be the name of variable name after parse
-- `outername`       varname which will be displayed and be the input variable name
-- `abbreviation`    abbreviation of outername
-- `help`            help information
+  - `innername`       varname which will be the name of variable name after parse
+  - `outername`       varname which will be displayed and be the input variable name
+  - `abbreviation`    abbreviation of outername
+  - `help`            help information
 """
 struct Flag
     innername::String
@@ -272,18 +273,38 @@ end
 
 """
 ```julia
-Flag(innername::AbstractString; outername::AbstractString = "", abbr::AbstractString = "", help::AbstractString = "")
+Flag(innername::AbstractString; outername::AbstractString="", abbr::AbstractString="", help::AbstractString="")
 ```
 """
 function Flag(innername::AbstractString;
-    outername::AbstractString = "",
-    abbr::AbstractString = "",
-    help::AbstractString = "")
+              outername::AbstractString="",
+              abbr::AbstractString="",
+              help::AbstractString="")
     if isempty(innername)
         error("Name of argument can't be ignored.")
     end
     outername = isempty(outername) ? innername : outername
     return Flag(String(innername), String(outername), String(abbr), String(help))
+end
+
+"""
+    `Flag(d::Dict)`
+
+generate `Flag` type from `Dict` type. The `Dict` must contain keys:
+`"innername"` and optional keys `"outername"`, `"abbr"` and `"help"`
+"""
+function Flag(d::Dict)
+    ks = keys(d)
+    inner = d["innername"]
+    outer = ("outername" in ks) ? d["outername"] : ""
+    abbr = ("abbr" in ks) ? d["abbr"] : ""
+    hp = ("help" in ks) ? d["help"] : ""
+    return Flag(inner; outername=outer, abbr=abbr, help=hp)
+end
+
+function Dict(f::Flag)
+    return Dict{String,String}("innername" => f.innername, "outername" => f.outername, "abbr" => f.abbreviation,
+                               "help" => f.help)
 end
 
 """
@@ -307,13 +328,13 @@ usually spicified like `--optname=optval`, `--optname optval` or  `-Abbreviation
 
 contains:
 
-- `innername`       varname which will be the name of variable name after parse
-- `outername`       varname which will be displayed and be the input variable name
-- `abbreviation`    abbreviation of outername
-- `default`         default value (input as string)
-- `parsefmt`        parse pattern
-- `required`        whether throw error when not exist or not
-- `help`            help information
+  - `innername`       varname which will be the name of variable name after parse
+  - `outername`       varname which will be displayed and be the input variable name
+  - `abbreviation`    abbreviation of outername
+  - `default`         default value (input as string)
+  - `parsefmt`        parse pattern
+  - `required`        whether throw error when not exist or not
+  - `help`            help information
 """
 struct Option
     innername::String
@@ -327,15 +348,17 @@ end
 
 """
 ```julia
-Option(innername::AbstractString; outername::AbstractString = "", abbreviation::AbstractString = "",
-    default::AbstractString = "", fmt::AbstractString = "%s", required::Bool = false, help::AbstractString = "")
+Option(innername::AbstractString; outername::AbstractString="", abbreviation::AbstractString="",
+       default::AbstractString="", fmt::AbstractString="%s", required::Bool=false, help::AbstractString="")
 ```
+
 fmt: C like format discription of input format. The discription is a combination of `Varformat` and `Delimiter`, and will
 be appended after the outername. See [`Varformat`](@Varformat) and [`Delimiter`](@Delimiter) for more information.
 
 # Example
 
 To parse the commandline argument:
+
 ```shell
 program --test=0.1/0.2
 ```
@@ -343,16 +366,16 @@ program --test=0.1/0.2
 The argument is setted like:
 
 ```julia
-Option("test", fmt="=%f/%f")
+Option("test"; fmt="=%f/%f")
 ```
 """
 function Option(innername::AbstractString;
-    outername::AbstractString = "",
-    abbr::AbstractString = "",
-    default::AbstractString = "",
-    fmt::AbstractString = "%s",
-    required::Bool = false,
-    help::AbstractString = "")
+                outername::AbstractString="",
+                abbr::AbstractString="",
+                default::AbstractString="",
+                fmt::AbstractString="%s",
+                required::Bool=false,
+                help::AbstractString="")
     if isempty(innername)
         error("Name of argument can't be ignored.")
     end
@@ -365,7 +388,25 @@ function Option(innername::AbstractString;
     end
     outername = isempty(outername) ? innername : outername
     return Option(String(innername), String(outername), String(abbr), String(default),
-        _parseinputfmt(fmt), required, String(help))
+                  _parseinputfmt(fmt), required, String(help))
+end
+
+"""
+    `Option(d::Dict)`
+
+generate `Option` type from `Dict` type. The `Dict` must contain keys:
+`"innername"` and optional keys `"outername"`, `"abbr"`, `"default"`, `"format"`, `"required"` and `"help"`
+"""
+function Option(d::Dict)
+    ks = keys(d)
+    inner = d["innername"]
+    outer = ("outername" in ks) ? d["outername"] : ""
+    abbr = ("abbr" in ks) ? d["abbr"] : ""
+    dft = ("default" in ks) ? d["default"] : ""
+    fmt = ("format" in ks) ? d["format"] : ""
+    rqd = ("required" in ks) ? d["required"] : false
+    hp = ("help" in ks) ? d["help"] : ""
+    return Option(inner; outername=outer, abbr=abbr, default=dft, fmt=fmt, required=rqd, help=hp)
 end
 
 """
@@ -380,10 +421,25 @@ macro opt_str(s)
     if !startswith(s, "--")
         error("opt_str should start with \"--\"")
     end
-    i = findfirst(v->v in DELIMLIST, s)
+    i = findfirst(v -> v in DELIMLIST, s)
     varn = String(s[3:i-1])
     fmt = String(s[i:end])
-    Option(varn, fmt=fmt)
+    Option(varn; fmt=fmt)
+end
+
+"""
+"""
+function Dict(o::Option)
+    fmt = map(o.parsefmt) do v
+              if typeof(v) <: Delimiter
+                  t = replace(v.string, "%" => "%%")
+              else
+                  t = v.string
+              end
+              t
+          end |> join |> String
+    return Dict("innername" => o.innername, "outername" => o.outername, "abbr" => o.abbreviation,
+                "default" => o.default, "format" => fmt, "required" => o.required, "help" => o.help)
 end
 
 """
@@ -395,12 +451,12 @@ input format.
 
 contains:
 
-- `position`        position of the variable
-- `innername`       varname which will be the name of variable name after parse
-- `default`         default value (input as string)
-- `parsefmt`        parse pattern
-- `required`        whether throw error when not exist or not
-- `help`            help information
+  - `position`        position of the variable
+  - `innername`       varname which will be the name of variable name after parse
+  - `default`         default value (input as string)
+  - `parsefmt`        parse pattern
+  - `required`        whether throw error when not exist or not
+  - `help`            help information
 """
 struct Parameter
     position::Int
@@ -413,8 +469,8 @@ end
 
 """
 ```julia
-Parameter(position::Int; innername::AbstractString = "", default::AbstractString = "",fmt::AbstractString = "%s",
-    required::Bool = false, help::AbstractString = "")
+Parameter(position::Int; innername::AbstractString="", default::AbstractString="", fmt::AbstractString="%s",
+          required::Bool=false, help::AbstractString="")
 ```
 
 fmt: C like format discription of input format. The discription is a combination of `Varformat` and `Delimiter`, and will
@@ -422,29 +478,36 @@ be appended after the outername. See [`Varformat`](@Varformat) and [`Delimiter`]
 
 # Example
 
-1. To parse the commandline argument:
+ 1. To parse the commandline argument:
+
 ```shell
    program 0.1
 ```
-   The argument is setted like:
+
+The argument is setted like:
+
 ```julia
-   Option(1, fmt="%f")
+Option(1; fmt="%f")
 ```
-2. commandline argument:
+
+ 2. commandline argument:
+
 ```shell
    program 2022/01/01T00:00:00.0
 ```
-   setting:
+
+setting:
+
 ```julia
-   Option(1, fmt="%d/%d/%dT%d:%d:%f")
+Option(1; fmt="%d/%d/%dT%d:%d:%f")
 ```
 """
 function Parameter(position::Int;
-    innername::AbstractString = "",
-    default::AbstractString = "",
-    fmt::AbstractString = "%s",
-    required::Bool = false,
-    help::AbstractString = "")
+                   innername::AbstractString="",
+                   default::AbstractString="",
+                   fmt::AbstractString="%s",
+                   required::Bool=false,
+                   help::AbstractString="")
     if !isempty(default)
         try
             _parse(String(default), _parseinputfmt(fmt))
@@ -452,8 +515,38 @@ function Parameter(position::Int;
             error("Error while parsing default value \"$(default)\" of position variable $(innername).")
         end
     end
-    innername = isempty(innername) ? "par"*string(position) : innername
+    innername = isempty(innername) ? "par" * string(position) : innername
     return Parameter(Int(position), String(innername), String(default), _parseinputfmt(fmt), required, String(help))
+end
+
+"""
+    `Parameter(d::Dict)`
+
+generate `Parameter` type from `Dict` type. The `Dict` must contain keys:
+`"position"` and optional keys `"innername"`, `"abbr"`, `"default"`, `"format"`, `"required"` and `"help"`
+"""
+function Parameter(d::Dict)
+    ks = keys(d)
+    pos = d["position"]
+    inner = d["position"]
+    dft = ("default" in ks) ? d["default"] : ""
+    fmt = ("format" in ks) ? d["format"] : ""
+    rqd = ("required" in ks) ? d["required"] : false
+    hp = ("help" in ks) ? d["help"] : ""
+    return Parameter(pos; innername=inner, default=dft, fmt=fmt, required=rqd, help=hp)
+end
+
+function Dict(p::Parameter)
+    fmt = map(p.parsefmt) do v
+              if typeof(v) <: Delimiter
+                  t = replace(v.string, "%" => "%%")
+              else
+                  t = v.string
+              end
+              t
+          end |> join |> String
+    return Dict("position" => p.position, "innername" => p.innername,
+                "default" => p.default, "format" => fmt, "required" => p.required, "help" => p.help)
 end
 
 """
@@ -461,10 +554,10 @@ end
 
 A group of `Option` and `Parameter`.
 
-- `name` name of the Group
-- `flgs` collect of `Flag`
-- `opts` collect of `Option`
-- `pars` collect of `Parameter`
+  - `name` name of the Group
+  - `flgs` collect of `Flag`
+  - `opts` collect of `Option`
+  - `pars` collect of `Parameter`
 """
 struct Group
     name::String
@@ -475,17 +568,125 @@ end
 
 """
 ```julia
-Group(name::AbstractString, flags::Vector{Flag}=Flag[], opts::Vector{Option}=Option[], pars::Vector{Parameter}=Parameter[])
+Group(name::AbstractString; flags::Vector{Flag}=Flag[], opts::Vector{Option}=Option[],
+      pars::Vector{Parameter}=Parameter[])
 ```
 """
-Group(
-    name::AbstractString,
-    flags::Vector{Flag}=Flag[],
-    opts::Vector{Option}=Option[],
-    pars::Vector{Parameter}=Parameter[]) = Group(String(name), flags, opts, pars)
+Group(name::AbstractString,
+flags::Vector{Flag}=Flag[],
+opts::Vector{Option}=Option[],
+pars::Vector{Parameter}=Parameter[]) = Group(String(name), flags, opts, pars)
 
 """
-    parse string to defined data structure
+    `Group(d::Dict)`
+
+generate `Group` type from `Dict` type. The `Dict` must contain keys:
+`"name"`, `"flags"`, `"opts"` and `"pars"`
+"""
+function Group(d::Dict)
+    return Group(d["name"], Flag.(d["flags"]), Option.(d["opts"]), Parameter.(d["pars"]))
+end
+
+function Dict(g::Group)
+    return Dict("name" => g.name, "flags" => Dict.(g.flgs), "opts" => Dict.(g.opts), "pars" => Dict.(g.pars))
+end
+
+function _checkuniqueness(var::AbstractVector, msg)
+    flag_conflict = false
+    L = length(var)
+    t1 = 0
+    t2 = 0
+    for i = 1:L-1
+        for j = i+1:L
+            flag_conflict |= (var[i] == var[j])
+            if flag_conflict
+                t1 = i
+                t2 = j
+                break
+            end
+        end
+        if flag_conflict
+            break
+        end
+    end
+    if flag_conflict
+        error("More than one `$(var[t1])` exist in $(msg) list.")
+    end
+    return nothing
+end
+
+"""
+    checksetting(grps::Vector{Group})
+
+check if there are conflicts between parameter settings
+"""
+function checksetting(grps::Vector{Group})
+    flgs = Flag[]
+    opts = Option[]
+    pars = Parameter[]
+    for g in grps
+        append!(flgs, g.flgs)
+        append!(opts, g.opts)
+        append!(pars, g.pars)
+    end
+    flg_outernames = map(v -> v.outername, flgs)
+    flg_innernames = map(v -> v.innername, flgs)
+    flg_abbr = map(v -> v.abbreviation, flgs)
+    opt_outernames = map(v -> v.outername, opts)
+    opt_innernames = map(v -> v.innername, opts)
+    opt_abbr = map(v -> v.abbreviation, opts)
+    par_position = map(v -> v.position, pars)
+    par_default = map(v -> !isempty(v.default), pars)
+    par_innernames = map(v -> v.innername, pars)
+    all_outernames = [flg_outernames; opt_outernames]
+    all_innernames = [flg_innernames; opt_innernames; par_innernames]
+    all_abbr = [flg_abbr; opt_abbr]
+    # check uniqueness
+    _checkuniqueness(all_outernames, "outername")
+    _checkuniqueness(all_innernames, "innername")
+    _checkuniqueness(all_abbr, "abbreviation")
+    # check the location of parameter
+    for i = 1:maximum(par_position)
+        if !(i in par_position)
+            @warn "the $(i)th parameter is not used"
+        end
+    end
+    # check default value settings of parameter
+    par_range = sortperm(par_position)
+    for i = 1:length(par_range)
+        if par_default[par_range[i]] && all(par_default[par_range[i:end]])
+            continue
+        else
+            error("the parameters after $(i)th parameter need default value")
+        end
+    end
+    # check help, usage and h option
+    if "help" in all_outernames
+        error("help option has special meaning, and can't be used as outername")
+    end
+    if "help" in all_innernames
+        error("help option has special meaning, and can't be used as innername")
+    end
+    if "usage" in all_outernames
+        error("usage option has special meaning, and can't be used as outername")
+    end
+    if "usage" in all_innernames
+        error("usage option has special meaning, and can't be used as innername")
+    end
+    if "h" in all_abbr
+        error("h has special meaning, and can't be used as abbreviation")
+    end
+    return nothing
+end
+
+"""
+    `checksetting(grp::Group)`
+"""
+checksetting(grp::Group) = checksetting([grp])
+
+"""
+    parse string to defined data structure. If there is `--help`, `--usage` or `-h` in commandline,
+    the program will print help document and exit.
 
 ```julia
 parse(cmdstr::String, grp::Group)
@@ -498,23 +699,23 @@ function parse(cmdstr::String, grp::Group)
     end
     chars = collect(cmdstr)
     unused = trues(length(cmdstr))
-    argpairs = Pair{Symbol, Any}[]
+    argpairs = Pair{Symbol,Any}[]
     for flag in grp.flgs
-        vloc1 = findall("--"*flag.outername, cmdstr)
-        vloc2 = isempty(flag.abbreviation) ? UnitRange{Int64}[] : findall("-"*flag.abbreviation, cmdstr)
+        vloc1 = findall("--" * flag.outername, cmdstr)
+        vloc2 = isempty(flag.abbreviation) ? UnitRange{Int64}[] : findall("-" * flag.abbreviation, cmdstr)
         vloc = [vloc1; vloc2]
         if isempty(vloc)
-            push!(argpairs, Symbol(flag.innername)=>false)
+            push!(argpairs, Symbol(flag.innername) => false)
         else
-            push!(argpairs, Symbol(flag.innername)=>true)
+            push!(argpairs, Symbol(flag.innername) => true)
             for r in vloc
                 unused[r] .= false
             end
         end
     end
     for opt in grp.opts
-        vloc1 = findall("--"*opt.outername, cmdstr)
-        vloc2 = isempty(opt.abbreviation) ? UnitRange{Int64}[] : findall("-"*opt.abbreviation, cmdstr)
+        vloc1 = findall("--" * opt.outername, cmdstr)
+        vloc2 = isempty(opt.abbreviation) ? UnitRange{Int64}[] : findall("-" * opt.abbreviation, cmdstr)
         vloc = [vloc1; vloc2]
         if length(vloc) > 1
             error("more than one values are assigned to $(opt.outername).")
@@ -533,7 +734,7 @@ function parse(cmdstr::String, grp::Group)
             (v, l) = _parse(String(chars[tloc[end]+1:end]), opt.parsefmt)
             unused[tloc[1]:tloc[end]+l] .= false
         end
-        push!(argpairs, Symbol(opt.innername)=>v)
+        push!(argpairs, Symbol(opt.innername) => v)
     end
     for i = 1:length(chars)-1
         if chars[i] == ' ' && chars[i+1] == ' ' && unused[i] && unused[i+1]
@@ -544,7 +745,7 @@ function parse(cmdstr::String, grp::Group)
     @debug "parse $(parstr) to parameters"
     parloc = [p.position for p in grp.pars]
     parperm = sortperm(parloc)
-    for ip = parperm
+    for ip in parperm
         par = grp.pars[ip]
         if par.position > length(parstr) && par.required
             @error("parameter on location $(par.position) must be specified.")
@@ -557,7 +758,7 @@ function parse(cmdstr::String, grp::Group)
         else
             (v, _) = _parse(parstr[par.position], par.parsefmt)
         end
-        push!(argpairs, Symbol(par.innername)=>v)
+        push!(argpairs, Symbol(par.innername) => v)
     end
     return NamedTuple(argpairs)
 end
@@ -568,10 +769,10 @@ parse(cmdstr::AbstractString, grps::Vector{Group})
 ```
 """
 function parse(cmdstr::AbstractString, grps::Vector{Group})
-    ps = Pair{Symbol, NamedTuple}[]
+    ps = Pair{Symbol,NamedTuple}[]
     for g in grps
         v = parse(cmdstr, g)
-        push!(ps, Symbol(g.name)=>v)
+        push!(ps, Symbol(g.name) => v)
     end
     return NamedTuple(ps)
 end
@@ -601,7 +802,7 @@ return value:
 
 ```julia
 (usage_line::String, example_line::String, varname_list::Vector{String},
-    abbreviation_list::Vector{String}, helps::Vector{String})
+ abbreviation_list::Vector{String}, helps::Vector{String})
 ```
 """
 function helpstr(groups::Vector{Group})
@@ -614,9 +815,9 @@ function helpstr(groups::Vector{Group})
     for g in groups
         for flag in g.flgs
             p1 = "--" * flag.outername
-            p2 = isempty(flag.abbreviation) ? "" : "-"*flag.abbreviation
+            p2 = isempty(flag.abbreviation) ? "" : "-" * flag.abbreviation
             push!(arg_varname, flag.outername)
-            push!(arg_usage_line, "["*p1*(isempty(p2) ? "" : "|")*p2*"]")
+            push!(arg_usage_line, "[" * p1 * (isempty(p2) ? "" : "|") * p2 * "]")
             push!(arg_detail_var, p1)
             push!(arg_detail_abbr, p2)
             push!(arg_detail_doc, flag.help)
@@ -624,7 +825,7 @@ function helpstr(groups::Vector{Group})
         end
         for opt in g.opts
             p1 = "--" * opt.outername
-            p2 = isempty(opt.abbreviation) ? "" : "-"*opt.abbreviation
+            p2 = isempty(opt.abbreviation) ? "" : "-" * opt.abbreviation
             emp = map(opt.parsefmt) do v
                 if typeof(v) <: Delimiter
                     s = v.string
@@ -634,7 +835,9 @@ function helpstr(groups::Vector{Group})
                 s
             end |> join
             push!(arg_varname, opt.outername)
-            push!(arg_usage_line, (opt.required ? "" : "[")*p1*emp*(isempty(p2) ? "" : "|")*p2*emp*(opt.required ? "" : "]"))
+            push!(arg_usage_line,
+                  (opt.required ? "" : "[") * p1 * emp * (isempty(p2) ? "" : "|") * p2 * emp *
+                  (opt.required ? "" : "]"))
             push!(arg_detail_var, p1)
             push!(arg_detail_abbr, p2)
             push!(arg_detail_doc, opt.help)
@@ -672,25 +875,24 @@ function helpstr(groups::Vector{Group})
             end
             s
         end |> join
-        push!(par_usage_line,  (par.required ? "" : "[")*par.innername*emp*(par.required ? "" : "]"))
+        push!(par_usage_line, (par.required ? "" : "[") * par.innername * emp * (par.required ? "" : "]"))
         push!(par_detail_var, par.innername)
         push!(par_detail_doc, par.help)
         push!(par_example_line, isempty(par.default) ? example(par.parsefmt) : par.default)
     end
-    return (
-        join([arg_usage_line; par_usage_line], ' '),
-        join([arg_example_line; par_example_line], ' '),
-        vcat(arg_detail_var, par_detail_var),
-        arg_detail_abbr,
-        vcat(arg_detail_doc, par_detail_doc))
+    return (join([arg_usage_line; par_usage_line], ' '),
+            join([arg_example_line; par_example_line], ' '),
+            vcat(arg_detail_var, par_detail_var),
+            arg_detail_abbr,
+            vcat(arg_detail_doc, par_detail_doc))
 end
 
 function splitbymargin(str::AbstractString, ruler::Int)
-    words = split(str, keepempty=false)
+    words = split(str; keepempty=false)
     lines = String[""]
     for i = 1:length(words)
         if length(lines[end]) + 1 + length(words[i]) <= ruler
-            lines[end] *= (isempty(lines[end]) ? "" : " ")*words[i]
+            lines[end] *= (isempty(lines[end]) ? "" : " ") * words[i]
         else
             push!(lines, words[i])
         end
@@ -702,12 +904,12 @@ end
     print help doc of defined data structure
 
 ```julia
-printhelp(groups::Vector{Group}, programname::AbstractString=""; indent::Int=4,
-    maxabbrcol::Int=5, maxvarcol::Int=10, maxdoccol::Int=60)
+printhelp(groups::Vector{Group}; programname::AbstractString="", indent::Int=4,
+          maxabbrcol::Int=5, maxvarcol::Int=10, maxdoccol::Int=60)
 ```
 """
 function printhelp(groups::Vector{Group}, programname::AbstractString=""; indent::Int=4,
-    maxabbrcol::Int=5, maxvarcol::Int=30, maxdoccol::Int=60)
+                   maxabbrcol::Int=5, maxvarcol::Int=30, maxdoccol::Int=60)
     if isempty(programname)
         fn = splitdir(PROGRAM_FILE)
         programname = fn[2]
@@ -724,17 +926,17 @@ function printhelp(groups::Vector{Group}, programname::AbstractString=""; indent
         if i <= L && !isempty(argabbr[i])
             print(argabbr[i], ',')
             if length(argabbr[i]) + 1 < abbrl
-                print(" "^(abbrl-1-length(argabbr[i])))
+                print(" "^(abbrl - 1 - length(argabbr[i])))
             end
             print(" ")
         else
-            print(" "^(abbrl+2))
+            print(" "^(abbrl + 2))
         end
         print(varlist[i])
-        if length(varlist[i])-1 > varl
-            print('\n', " "^(indent+varl+abbrl))
+        if length(varlist[i]) - 1 > varl
+            print('\n', " "^(indent + varl + abbrl))
         else
-            print(" "^(varl-length(varlist[i])+1))
+            print(" "^(varl - length(varlist[i]) + 1))
         end
         if length(docs[i]) < maxdoccol
             println(docs[i])
@@ -743,7 +945,7 @@ function printhelp(groups::Vector{Group}, programname::AbstractString=""; indent
             println(hl[1])
             if length(hl) > 1
                 for i = 2:length(hl)
-                    println(" "^(indent+varl+abbrl), hl[i])
+                    println(" "^(indent + varl + abbrl), hl[i])
                 end
             end
         end
@@ -753,13 +955,14 @@ end
 
 """
 ```julia
-printhelp(group::Group, programname::AbstractString=""; indent::Int=4,
-    maxabbrcol::Int=5, maxvarcol::Int=30, maxdoccol::Int=60)
+printhelp(group::Group; programname::AbstractString="", indent::Int=4,
+          maxabbrcol::Int=5, maxvarcol::Int=30, maxdoccol::Int=60)
 ```
 """
 printhelp(group::Group, programname::AbstractString=""; indent::Int=4,
-    maxabbrcol::Int=5, maxvarcol::Int=30, maxdoccol::Int=60) = printhelp([group],
-    programname; indent=indent, maxabbrcol=maxabbrcol, maxvarcol=maxvarcol, maxdoccol=maxdoccol)
+maxabbrcol::Int=5, maxvarcol::Int=30, maxdoccol::Int=60) = printhelp([group],
+                                                                     programname; indent=indent, maxabbrcol=maxabbrcol,
+                                                                     maxvarcol=maxvarcol, maxdoccol=maxdoccol)
 
 global INNER_FLAG = Flag[]
 global INNER_OPTION = Option[]
@@ -806,42 +1009,40 @@ end
 
 """
 ```julia
-addflag!(innername::AbstractString; outername::AbstractString = "",
-    abbr::AbstractString = "", help::AbstractString = "")
+addflag!(innername::AbstractString; outername::AbstractString="",
+         abbr::AbstractString="", help::AbstractString="")
 ```
 """
-addflag!(innername::AbstractString; outername::AbstractString = "",
-    abbr::AbstractString = "", help::AbstractString = "") =
-    addflag!(Flag(innername, outername=outername, abbr=abbr, help=help))
+addflag!(innername::AbstractString; outername::AbstractString="",
+abbr::AbstractString="", help::AbstractString="") = addflag!(Flag(innername; outername=outername, abbr=abbr, help=help))
 
 """
 ```julia
-addopt!(innername::AbstractString; outername::AbstractString = "", abbr::AbstractString = "",
-    default::AbstractString = "", fmt::AbstractString = "%s", required::Bool = false, help::AbstractString = "")
+addopt!(innername::AbstractString; outername::AbstractString="", abbr::AbstractString="",
+        default::AbstractString="", fmt::AbstractString="%s", required::Bool=false, help::AbstractString="")
 ```
 """
-addopt!(
-    innername::AbstractString;
-    outername::AbstractString = "",
-    abbr::AbstractString = "",
-    default::AbstractString = "",
-    fmt::AbstractString = "%s",
-    required::Bool = false,
-    help::AbstractString = ""
-) = addopt!(Option(innername; outername=outername, abbr=abbr, default=default, fmt=fmt, required=required, help=help))
+addopt!(innername::AbstractString;
+outername::AbstractString="",
+abbr::AbstractString="",
+default::AbstractString="",
+fmt::AbstractString="%s",
+required::Bool=false,
+help::AbstractString="") = addopt!(Option(innername; outername=outername, abbr=abbr, default=default, fmt=fmt,
+                                          required=required, help=help))
 
 """
 ```julia
-addpar!(position::Int; innername::AbstractString = "", default::AbstractString = "", fmt::AbstractString = "%s",
-    required::Bool = false, help::AbstractString = "")
+addpar!(position::Int; innername::AbstractString="", default::AbstractString="", fmt::AbstractString="%s",
+        required::Bool=false, help::AbstractString="")
 ```
 """
-function addpar!(position::Int = 0;
-    innername::AbstractString = "",
-    default::AbstractString = "",
-    fmt::AbstractString = "%s",
-    required::Bool = false,
-    help::AbstractString = "")
+function addpar!(position::Int=0;
+                 innername::AbstractString="",
+                 default::AbstractString="",
+                 fmt::AbstractString="%s",
+                 required::Bool=false,
+                 help::AbstractString="")
     if position == 0
         position = length(INNER_PARAMETER) + 1
     end
@@ -897,9 +1098,9 @@ parse commandline input according to inner buffer
 parse(lines::Vector{<:AbstractString}) = parse(join(lines, ' '))
 
 function printhelp(programname::AbstractString=""; indent::Int=4,
-maxabbrcol::Int=5, maxvarcol::Int=30, maxdoccol::Int=60)
+                   maxabbrcol::Int=5, maxvarcol::Int=30, maxdoccol::Int=60)
     printhelp([Group("UNKNOWN", INNER_FLAG, INNER_OPTION, INNER_PARAMETER)],
-        programname, indent=indent, maxabbrcol=maxabbrcol, maxvarcol=maxvarcol, maxdoccol=maxdoccol)
+              programname; indent=indent, maxabbrcol=maxabbrcol, maxvarcol=maxvarcol, maxdoccol=maxdoccol)
 end
 
 """
