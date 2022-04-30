@@ -424,7 +424,7 @@ macro opt_str(s)
     i = findfirst(v -> v in DELIMLIST, s)
     varn = String(s[3:i-1])
     fmt = String(s[i:end])
-    Option(varn; fmt=fmt)
+    Option(varn; fmt=fmt, required=true)
 end
 
 """
@@ -528,7 +528,7 @@ generate `Parameter` type from `Dict` type. The `Dict` must contain keys:
 function Parameter(d::Dict)
     ks = keys(d)
     pos = d["position"]
-    inner = d["position"]
+    inner = ("innername" in ks) ? d["innername"] : ""
     dft = ("default" in ks) ? d["default"] : ""
     fmt = ("format" in ks) ? d["format"] : ""
     rqd = ("required" in ks) ? d["required"] : false
@@ -1103,15 +1103,4 @@ function printhelp(programname::AbstractString=""; indent::Int=4,
               programname; indent=indent, maxabbrcol=maxabbrcol, maxvarcol=maxvarcol, maxdoccol=maxdoccol)
 end
 
-"""
-    @printhelp
-
-print help in inner buffer
-"""
-macro printhelp(p)
-    return quote
-        fname = splitdir(PROGRAM_FILE)
-        printhelp(fname[2])
-    end
-end
 end
