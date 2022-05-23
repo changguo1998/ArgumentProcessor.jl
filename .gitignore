@@ -2,3 +2,6 @@
 /src/.JuliaFormatter.toml
 /.vscode/
 /docs/
+.gitignore
+.gcbakup
+.gcbaksearchignore
