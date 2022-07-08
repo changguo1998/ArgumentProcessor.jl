@@ -3,4 +3,4 @@
 /.vscode/
 /docs/
 .gitignore
-.gcbackup
+.gcbackup.toml
