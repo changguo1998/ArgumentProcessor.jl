@@ -3,5 +3,4 @@
 /.vscode/
 /docs/
 .gitignore
-.gcbakup
-.gcbaksearchignore
+.gcbackup
