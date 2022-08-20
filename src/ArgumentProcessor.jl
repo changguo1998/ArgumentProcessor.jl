@@ -5,7 +5,6 @@ A module to help parse command line arguments and parameters.
 """
 module ArgumentProcessor
 
-import Base: parse, Dict
 export Varformat, Delimiter, Flag, Option, Parameter, Group, Dict,
        helpstr, printhelp, addflag!, addopt!, addpar!, clearinnerbuffer!, checksetting,
        @addflag, @addopt, @printhelp, @flag_str, @opt_str
@@ -51,19 +50,19 @@ function parsefunc(F::Varformat)
     if fmt == "%s"
         return v -> String(v)
     elseif fmt in ("%f", "%g")
-        return v -> parse(Float64, v)
+        return v -> Base.parse(Float64, v)
     elseif fmt == "%c"
-        return v -> parse(ComplexF64, v)
+        return v -> Base.parse(ComplexF64, v)
     elseif fmt == "%h"
-        return v -> parse(Int, v; base=16)
+        return v -> Base.parse(Int, v; base=16)
     elseif fmt == "%o"
-        return v -> parse(Int, v; base=8)
+        return v -> Base.parse(Int, v; base=8)
     elseif fmt == "%b"
-        return v -> parse(Int, v; base=2)
+        return v -> Base.parse(Int, v; base=2)
     elseif fmt == "%d"
-        return v -> parse(Int, v)
+        return v -> Base.parse(Int, v)
     elseif fmt == "%l"
-        return v -> parse(Bool, v)
+        return v -> Base.parse(Bool, v)
     else
         error("invalid type character " * fmt)
     end
@@ -172,7 +171,7 @@ function _parseinputfmt(str::AbstractString)
     ibegins = [1; valueloc; (valueloc .+ 2)] |> sort |> unique |> t -> filter(<=(L), t)
     # parse each segment
     fmt = FormatPart[]
-    for i = 1:length(ibegins)
+    for i = eachindex(ibegins)
         ib = ibegins[i]
         ie = i == length(ibegins) ? L : ibegins[i+1] - 1
         ts = String(chars[ib:ie])
@@ -214,7 +213,7 @@ function _parse(str::String, fmt::Vector{FormatPart})
     ivar = findall(v -> typeof(v) <: Varformat, fmt) # variable location
     v = Any[]
     endat = 0 # record the used characters
-    for i = 1:length(ivar)
+    for i = eachindex(ivar)
         ib = ibegins[ivar[i]]
         if ivar[i] == Lfmt
             # if the last segment is var, the segment will be end before a space;
@@ -293,7 +292,7 @@ end
 generate `Flag` type from `Dict` type. The `Dict` must contain keys:
 `"innername"` and optional keys `"outername"`, `"abbr"` and `"help"`
 """
-function Flag(d::Dict)
+function Flag(d::Base.Dict)
     ks = keys(d)
     inner = d["innername"]
     outer = ("outername" in ks) ? d["outername"] : ""
@@ -348,7 +347,7 @@ end
 
 """
 ```julia
-Option(innername::AbstractString; outername::AbstractString="", abbreviation::AbstractString="",
+Option(innername::AbstractString; outername::AbstractString="", abbr::AbstractString="",
        default::AbstractString="", fmt::AbstractString="%s", required::Bool=false, help::AbstractString="")
 ```
 
@@ -397,7 +396,7 @@ end
 generate `Option` type from `Dict` type. The `Dict` must contain keys:
 `"innername"` and optional keys `"outername"`, `"abbr"`, `"default"`, `"format"`, `"required"` and `"help"`
 """
-function Option(d::Dict)
+function Option(d::Base.Dict)
     ks = keys(d)
     inner = d["innername"]
     outer = ("outername" in ks) ? d["outername"] : ""
@@ -438,7 +437,7 @@ function Dict(o::Option)
               end
               t
           end |> join |> String
-    return Dict("innername" => o.innername, "outername" => o.outername, "abbr" => o.abbreviation,
+    return Base.Dict("innername" => o.innername, "outername" => o.outername, "abbr" => o.abbreviation,
                 "default" => o.default, "format" => fmt, "required" => o.required, "help" => o.help)
 end
 
@@ -525,7 +524,7 @@ end
 generate `Parameter` type from `Dict` type. The `Dict` must contain keys:
 `"position"` and optional keys `"innername"`, `"abbr"`, `"default"`, `"format"`, `"required"` and `"help"`
 """
-function Parameter(d::Dict)
+function Parameter(d::Base.Dict)
     ks = keys(d)
     pos = d["position"]
     inner = ("innername" in ks) ? d["innername"] : ""
@@ -545,7 +544,7 @@ function Dict(p::Parameter)
               end
               t
           end |> join |> String
-    return Dict("position" => p.position, "innername" => p.innername,
+    return Base.Dict("position" => p.position, "innername" => p.innername,
                 "default" => p.default, "format" => fmt, "required" => p.required, "help" => p.help)
 end
 
@@ -572,7 +571,7 @@ Group(name::AbstractString; flags::Vector{Flag}=Flag[], opts::Vector{Option}=Opt
       pars::Vector{Parameter}=Parameter[])
 ```
 """
-Group(name::AbstractString,
+Group(name::AbstractString;
 flags::Vector{Flag}=Flag[],
 opts::Vector{Option}=Option[],
 pars::Vector{Parameter}=Parameter[]) = Group(String(name), flags, opts, pars)
@@ -583,12 +582,12 @@ pars::Vector{Parameter}=Parameter[]) = Group(String(name), flags, opts, pars)
 generate `Group` type from `Dict` type. The `Dict` must contain keys:
 `"name"`, `"flags"`, `"opts"` and `"pars"`
 """
-function Group(d::Dict)
+function Group(d::Base.Dict)
     return Group(d["name"], Flag.(d["flags"]), Option.(d["opts"]), Parameter.(d["pars"]))
 end
 
 function Dict(g::Group)
-    return Dict("name" => g.name, "flags" => Dict.(g.flgs), "opts" => Dict.(g.opts), "pars" => Dict.(g.pars))
+    return Base.Dict("name" => g.name, "flags" => Dict.(g.flgs), "opts" => Dict.(g.opts), "pars" => Dict.(g.pars))
 end
 
 function _checkuniqueness(var::AbstractVector, msg)
@@ -653,7 +652,7 @@ function checksetting(grps::Vector{Group})
     end
     # check default value settings of parameter
     par_range = sortperm(par_position)
-    for i = 1:length(par_range)
+    for i = eachindex(par_range)
         if par_default[par_range[i]] && all(par_default[par_range[i:end]])
             continue
         else
@@ -769,6 +768,10 @@ parse(cmdstr::AbstractString, grps::Vector{Group})
 ```
 """
 function parse(cmdstr::AbstractString, grps::Vector{Group})
+    if any(occursin.(("--help", "--usage", "-h"), cmdstr))
+        printhelp(grps)
+        exit(0)
+    end
     ps = Pair{Symbol,NamedTuple}[]
     for g in grps
         v = parse(cmdstr, g)
@@ -890,7 +893,7 @@ end
 function splitbymargin(str::AbstractString, ruler::Int)
     words = split(str; keepempty=false)
     lines = String[""]
-    for i = 1:length(words)
+    for i = eachindex(words)
         if length(lines[end]) + 1 + length(words[i]) <= ruler
             lines[end] *= (isempty(lines[end]) ? "" : " ") * words[i]
         else
@@ -921,7 +924,7 @@ function printhelp(groups::Vector{Group}, programname::AbstractString=""; indent
     abbrl = min(maximum(length.(argabbr)), maxabbrcol)
     L = length(argabbr)
     println("\nArgument:\n")
-    for i = 1:length(varlist)
+    for i = eachindex(varlist)
         print(" "^indent)
         if i <= L && !isempty(argabbr[i])
             print(argabbr[i], ',')
@@ -944,7 +947,10 @@ function printhelp(groups::Vector{Group}, programname::AbstractString=""; indent
             hl = splitbymargin(docs[i], maxdoccol)
             println(hl[1])
             if length(hl) > 1
-                for i = 2:length(hl)
+                for i = eachindex(hl)
+                    if i == 1
+                        continue
+                    end
                     println(" "^(indent + varl + abbrl), hl[i])
                 end
             end
