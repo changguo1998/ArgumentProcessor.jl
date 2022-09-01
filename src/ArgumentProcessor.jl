@@ -5,7 +5,7 @@ A module to help parse command line arguments and parameters.
 """
 module ArgumentProcessor
 
-export Varformat, Delimiter, Flag, Option, Parameter, Group, Dict,
+export Varformat, Delimiter, Flag, Option, Parameter, Group,
        helpstr, printhelp, addflag!, addopt!, addpar!, clearinnerbuffer!, checksetting,
        @addflag, @addopt, @printhelp, @flag_str, @opt_str
 
