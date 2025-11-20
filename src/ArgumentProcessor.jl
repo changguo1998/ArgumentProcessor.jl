@@ -678,6 +678,11 @@ function checksetting(grps::Vector{Group})
     return nothing
 end
 
+function _is_help_flag_exist(str::AbstractString)
+    t = split(str, ' '; keepempty=false)
+    return any(l->(l in ("--help", "--usage", "-h")), t)
+end
+
 """
     `checksetting(grp::Group)`
 """
@@ -692,7 +697,7 @@ parse(cmdstr::String, grp::Group)
 ```
 """
 function parse(cmdstr::String, grp::Group)
-    if any(occursin.(("--help", "--usage", "-h"), cmdstr))
+    if _is_help_flag_exist(cmdstr)
         printhelp(grp)
         exit(0)
     end
@@ -768,7 +773,7 @@ parse(cmdstr::AbstractString, grps::Vector{Group})
 ```
 """
 function parse(cmdstr::AbstractString, grps::Vector{Group})
-    if any(occursin.(("--help", "--usage", "-h"), cmdstr))
+    if _is_help_flag_exist(cmdstr)
         printhelp(grps)
         exit(0)
     end
