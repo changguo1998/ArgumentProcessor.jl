@@ -9,6 +9,8 @@ export Varformat, Delimiter, Flag, Option, Parameter, Group,
        helpstr, printhelp, addflag!, addopt!, addpar!, clearinnerbuffer!, checksetting,
        @addflag, @addopt, @printhelp, @flag_str, @opt_str
 
+import Base: Dict
+
 const FMTLIST = ("%s", "%f", "%g", "%h", "%o", "%b", "%c", "%d", "%l")
 
 """
