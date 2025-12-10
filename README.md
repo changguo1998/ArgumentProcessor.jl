@@ -242,7 +242,17 @@ using ArgumentProcessor, TOML
 group = TOML.parsefile("arg_setting.toml") |> Group
 ```
 
+## Other
+
+When setting `ArgumentProcessor.THROW_ERROR_AFTER_HELP` to `true`, the program
+will throw an error after printing help information instead of exiting.
+
 ## History
 
 - `1.0.0` submit first version
 - `1.1.0` add function to check parameter setting
+- `1.1.1` change code style and fix compile warning
+- `1.1.2` fix import conflict with `Base.Dict`
+- `1.1.3` fix bug when variable name has `-h`, the program will print help
+- `1.1.4` fix precompile warning
+- `1.1.5` update help format, add new feature to throw error after print help doc

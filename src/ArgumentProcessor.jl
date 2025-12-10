@@ -188,7 +188,7 @@ function _parseinputfmt(str::AbstractString)
 end
 
 """
-    `_parse(str::String, fmt::Vector{FormatPart})`
+    _parse(str::String, fmt::Vector{FormatPart})
 
 inner function.
 
@@ -284,7 +284,7 @@ function Flag(innername::AbstractString;
     if isempty(innername)
         error("Name of argument can't be ignored.")
     end
-    outername = isempty(outername) ? innername : outername
+    outername = isempty(outername) ? replace(innername, "_"=>"-") : outername
     return Flag(String(innername), String(outername), String(abbr), String(help))
 end
 
@@ -387,13 +387,13 @@ function Option(innername::AbstractString;
             error("Error while parsing default value \"$(default)\" of option variable $(innername).")
         end
     end
-    outername = isempty(outername) ? innername : outername
+    outername = isempty(outername) ? replace(innername, "_"=>"-") : outername
     return Option(String(innername), String(outername), String(abbr), String(default),
                   _parseinputfmt(fmt), required, String(help))
 end
 
 """
-    `Option(d::Dict)`
+    Option(d::Dict)
 
 generate `Option` type from `Dict` type. The `Dict` must contain keys:
 `"innername"` and optional keys `"outername"`, `"abbr"`, `"default"`, `"format"`, `"required"` and `"help"`
@@ -690,6 +690,8 @@ end
 """
 checksetting(grp::Group) = checksetting([grp])
 
+THROW_ERROR_AFTER_HELP = false
+
 """
     parse string to defined data structure. If there is `--help`, `--usage` or `-h` in commandline,
     the program will print help document and exit.
@@ -701,7 +703,11 @@ parse(cmdstr::String, grp::Group)
 function parse(cmdstr::String, grp::Group)
     if _is_help_flag_exist(cmdstr)
         printhelp(grp)
-        exit(0)
+        if THROW_ERROR_AFTER_HELP
+            error("already print help")
+        else
+            exit(0)
+        end
     end
     chars = collect(cmdstr)
     unused = trues(length(cmdstr))
@@ -927,24 +933,20 @@ function printhelp(groups::Vector{Group}, programname::AbstractString=""; indent
     (usagestr, examplestr, varlist, argabbr, docs) = helpstr(groups)
     println("Usage: ", programname, " ", usagestr)
     println("\nExample:\n", " "^indent, programname, " ", examplestr)
-    varl = min(maximum(length.(varlist)), maxvarcol)
-    abbrl = min(maximum(length.(argabbr)), maxabbrcol)
+    varl = min(maximum(length.(varlist)), maxvarcol-1)
+    abbrl = min(maximum(length.(argabbr)), maxabbrcol-2)
     L = length(argabbr)
     println("\nArgument:\n")
     for i = eachindex(varlist)
         print(" "^indent)
         if i <= L && !isempty(argabbr[i])
-            print(argabbr[i], ',')
-            if length(argabbr[i]) + 1 < abbrl
-                print(" "^(abbrl - 1 - length(argabbr[i])))
-            end
-            print(" ")
+            print(argabbr[i], ',', " "^(abbrl - length(argabbr[i])+1))
         else
             print(" "^(abbrl + 2))
         end
         print(varlist[i])
-        if length(varlist[i]) - 1 > varl
-            print('\n', " "^(indent + varl + abbrl))
+        if length(varlist[i]) > varl
+            print('\n', " "^(indent + maxvarcol + maxabbrcol))
         else
             print(" "^(varl - length(varlist[i]) + 1))
         end
@@ -954,12 +956,7 @@ function printhelp(groups::Vector{Group}, programname::AbstractString=""; indent
             hl = splitbymargin(docs[i], maxdoccol)
             println(hl[1])
             if length(hl) > 1
-                for i = eachindex(hl)
-                    if i == 1
-                        continue
-                    end
-                    println(" "^(indent + varl + abbrl), hl[i])
-                end
+                foreach(l->println(" "^(indent + maxvarcol + maxabbrcol), l), hl[2:end])
             end
         end
     end
@@ -1097,14 +1094,14 @@ function clearinnerbuffer!()
 end
 
 """
-    `parse(line::AbstractString)`
+    parse(line::AbstractString)
 
 parse commandline input according to inner buffer
 """
 parse(line::AbstractString) = parse(String(line), Group("UNKNOWN", INNER_FLAG, INNER_OPTION, INNER_PARAMETER))
 
 """
-    `parse(lines::Vector{<:AbstractString})`
+    parse(lines::Vector{<:AbstractString})
 
 parse commandline input according to inner buffer
 """
